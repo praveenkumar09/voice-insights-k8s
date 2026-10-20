@@ -1,0 +1,35 @@
+# One public address for everything: /api and /ws go to the API, everything else to the UI. HTTPS is required (the browser only allows the
+# microphone on https), and comes from cert-manager + Let's Encrypt.
+# Replace YOUR-DNS-LABEL.REGION.cloudapp.azure.com in BOTH places below (README step 6).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: voice-insights
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"        # zip uploads in Admin -> Knowledge base
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"     # long-lived voice WebSockets and the live analysis stream
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"         # lets the server-sent analysis events through as they happen
+    # The app lets anyone who can reach it sign up, and every user spends your Azure OpenAI quota. For a POC, limit it to your own IPs
+    # (your office/home public IP, comma separated) by removing the # on the next line:
+    # nginx.ingress.kubernetes.io/whitelist-source-range: "203.0.113.10/32"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - YOUR-DNS-LABEL.REGION.cloudapp.azure.com
+      secretName: voice-insights-tls
+  rules:
+    - host: YOUR-DNS-LABEL.REGION.cloudapp.azure.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend: { service: { name: voice-insights-api, port: { number: 8084 } } }
+          - path: /ws
+            pathType: Prefix
+            backend: { service: { name: voice-insights-api, port: { number: 8084 } } }
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: voice-insights-ui, port: { number: 80 } } }

@@ -1,0 +1,66 @@
+# The Spring Boot API (port 8084). Keep it at ONE replica: voice sessions and live analysis state live in the process.
+apiVersion: v1
+kind: Service
+metadata:
+  name: voice-insights-api
+  labels: { app: voice-insights-api }
+spec:
+  selector: { app: voice-insights-api }
+  ports:
+    - { name: http, port: 8084, targetPort: 8084 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voice-insights-api
+  labels: { app: voice-insights-api }
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate           # a second copy during a rollout would clash on sessions; a short gap is fine for a POC
+  selector:
+    matchLabels: { app: voice-insights-api }
+  template:
+    metadata:
+      labels: { app: voice-insights-api }
+    spec:
+      # imagePullSecrets:       # only if the Docker Hub repository is PRIVATE (README step 3b)
+      #   - name: dockerhub
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z postgres 5432; do echo waiting for postgres; sleep 3; done"]
+        - name: wait-for-redis
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z redis 6379; do echo waiting for redis; sleep 3; done"]
+      containers:
+        - name: api
+          image: voice-insights-api            # rewritten by kustomization.yaml (images:) to <dockerhub-user>/voice-insights-api:<tag>
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 8084 }
+          envFrom:
+            - configMapRef: { name: voice-insights-config }
+          env:
+            - name: AZURE_OPENAI_API_KEY
+              valueFrom: { secretKeyRef: { name: voice-insights-secrets, key: AZURE_OPENAI_API_KEY } }
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom: { secretKeyRef: { name: voice-insights-secrets, key: POSTGRES_PASSWORD } }
+          startupProbe:
+            httpGet: { path: /actuator/health, port: http }
+            periodSeconds: 5
+            failureThreshold: 36             # up to 3 minutes to start
+          readinessProbe:
+            httpGet: { path: /actuator/health, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet: { path: /actuator/health, port: http }
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 5
+          # Sized for a live demo, not for cost: one full CPU is always reserved, it may burst to three, and 2-3 GiB of memory keeps the
+          # JVM clear of garbage-collection pauses. (Every voice session streams audio and runs several model calls at once.)
+          resources:
+            requests: { cpu: "1", memory: 2Gi }
+            limits: { cpu: "3", memory: 3Gi }

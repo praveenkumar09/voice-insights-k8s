@@ -1,0 +1,41 @@
+# The React UI served by nginx. Built with an EMPTY API address, so it calls the API on its own host (through the ingress).
+apiVersion: v1
+kind: Service
+metadata:
+  name: voice-insights-ui
+  labels: { app: voice-insights-ui }
+spec:
+  selector: { app: voice-insights-ui }
+  ports:
+    - { name: http, port: 80, targetPort: 80 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voice-insights-ui
+  labels: { app: voice-insights-ui }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: voice-insights-ui }
+  template:
+    metadata:
+      labels: { app: voice-insights-ui }
+    spec:
+      # imagePullSecrets:       # only if the Docker Hub repository is PRIVATE (README step 3b)
+      #   - name: dockerhub
+      containers:
+        - name: ui
+          image: voice-insights-ui             # rewritten by kustomization.yaml (images:)
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 80 }
+          readinessProbe:
+            httpGet: { path: /, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /, port: http }
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 100m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }

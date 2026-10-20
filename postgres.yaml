@@ -1,0 +1,68 @@
+# Postgres 16 with the pgvector extension, one pod with a persistent Azure disk. Only reachable inside the namespace (Service `postgres`).
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels: { app: postgres }
+spec:
+  clusterIP: None            # headless: the StatefulSet pod is postgres-0.postgres
+  selector: { app: postgres }
+  ports:
+    - { name: pg, port: 5432, targetPort: 5432 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  labels: { app: postgres }
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres }
+  template:
+    metadata:
+      labels: { app: postgres }
+    spec:
+      securityContext:
+        fsGroup: 999
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg16
+          # Settings for a 2 GiB pod: a larger buffer cache, and room for sorting the vector search results in memory.
+          args: ["postgres", "-c", "shared_buffers=512MB", "-c", "effective_cache_size=1GB", "-c", "work_mem=16MB", "-c", "max_connections=100"]
+          ports:
+            - { name: pg, containerPort: 5432 }
+          env:
+            - name: POSTGRES_DB
+              valueFrom: { configMapKeyRef: { name: voice-insights-config, key: POSTGRES_DB } }
+            - name: POSTGRES_USER
+              valueFrom: { configMapKeyRef: { name: voice-insights-config, key: POSTGRES_USER } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: voice-insights-secrets, key: POSTGRES_PASSWORD } }
+            # An Azure disk has a lost+found folder at its root, which Postgres refuses to initialise over: use a sub-folder.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+          readinessProbe:
+            exec: { command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""] }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec: { command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""] }
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 6
+          resources:
+            requests: { cpu: 500m, memory: 1536Mi }
+            limits: { cpu: "2", memory: 2560Mi }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: managed-csi-premium    # Premium SSD: noticeably faster than the default disk
+        resources:
+          requests:
+            storage: 10Gi

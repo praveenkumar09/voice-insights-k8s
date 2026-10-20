@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: voice-insights
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - postgres.yaml
+  - redis.yaml
+  - api.yaml
+  - ui.yaml
+  - ingress.yaml
+# Docker Hub images (public, linux/amd64). A new version: push a new tag with scripts/push-images.sh, then change newTag here.
+images:
+  - name: voice-insights-api
+    newName: tpkprav/voice-insights-api
+    newTag: "1.0.0"
+  - name: voice-insights-ui
+    newName: tpkprav/voice-insights-ui
+    newTag: "1.0.0"

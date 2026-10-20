@@ -1,0 +1,28 @@
+# Non-secret settings. The API key and the database password are in the `voice-insights-secrets` Secret (see secrets.example.yaml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: voice-insights-config
+data:
+  # Azure OpenAI (same resource and deployments as local)
+  AZURE_OPENAI_ENDPOINT: "https://aia-voice-insight.openai.azure.com/"
+  AZURE_OPENAI_RESOURCE: "aia-voice-insight"
+  AZURE_OPENAI_CHAT_DEPLOYMENT: "gpt-4.1"
+  AZURE_OPENAI_EMBEDDING_DEPLOYMENT: "text-embedding-3-large"
+  AZURE_OPENAI_TRANSCRIBE_DEPLOYMENT: "gpt-4o-transcribe"
+  AZURE_OPENAI_TTS_DEPLOYMENT: "gpt-4o-mini-tts"
+  JUNO_VOICE_FEMALE: "coral"
+  JUNO_VOICE_MALE: "ash"
+  # In-cluster addresses: the Services below
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/ingestor"
+  SPRING_DATASOURCE_USERNAME: "admin"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  # Heap sized from the pod's memory limit (api.yaml): starts at 50% so it never has to grow mid-demo, may use 70%.
+  JAVA_TOOL_OPTIONS: "-XX:InitialRAMPercentage=50 -XX:MaxRAMPercentage=70 -XX:+UseG1GC"
+  # Behind the ingress the API must trust X-Forwarded-Proto/Host. Without this it sees http://, the browser says https://, and the same-origin
+  # calls are mistaken for cross-origin ones ("Invalid CORS request", HTTP 403).
+  SERVER_FORWARD_HEADERS_STRATEGY: "framework"
+  # Postgres container
+  POSTGRES_DB: "ingestor"
+  POSTGRES_USER: "admin"
