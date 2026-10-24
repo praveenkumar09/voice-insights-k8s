@@ -36,7 +36,7 @@ spec:
       containers:
         - name: api
           image: voice-insights-api            # rewritten by kustomization.yaml (images:) to <dockerhub-user>/voice-insights-api:<tag>
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always            # the tag is reused (1.0.0), so pull on every pod start or a node keeps serving its cached old image
           ports:
             - { name: http, containerPort: 8084 }
           envFrom:

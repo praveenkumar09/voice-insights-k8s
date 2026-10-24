@@ -1,6 +1,6 @@
 # Voice Insights on Azure AKS (POC)
 
-Two app pods (UI and API) plus Postgres/pgvector and Redis as pods, all in one namespace, `voice-insights`.
+Two app pods (UI and API) plus Postgres/pgvector and Redis as pods, all in one namespace, `nsp-sgpoc-voice-insights`.
 
 ```
                       Internet (HTTPS)
@@ -10,7 +10,7 @@ Two app pods (UI and API) plus Postgres/pgvector and Redis as pods, all in one n
                      ingress-nginx  (+ Let's Encrypt certificate)
                   /api, /ws |        | /
                             v        v
-        namespace: voice-insights
+        namespace: nsp-sgpoc-voice-insights
         ┌──────────────────────────┐   ┌──────────────────┐
         │ voice-insights-api :8084 │   │ voice-insights-ui │
         └───────┬──────────┬───────┘   └──────────────────┘
@@ -48,10 +48,10 @@ Files in this folder
 Pick values once and reuse them in the commands below (change them if you like):
 
 ```bash
-export RG=rg-voice-insights
+export RG=rg-praveen
 export LOCATION=southeastasia            # close to Singapore users; use the region your subscription allows
-export AKS=aks-voice-insights
-export DNS_LABEL=voice-insights-<something-unique>     # becomes <label>.<region>.cloudapp.azure.com
+export AKS=aks-sgpoc-voice-insights
+export DNS_LABEL=aiasg-voice-insights                       # becomes <label>.<region>.cloudapp.azure.com
 export DOCKERHUB_USER=tpkprav
 export TAG=1.0.0
 ```
@@ -113,7 +113,7 @@ with no credentials. Only if you later make one private, create a pull secret an
 
 ```bash
 kubectl apply -f namespace.yaml
-kubectl -n voice-insights create secret docker-registry dockerhub \
+kubectl -n nsp-sgpoc-voice-insights create secret docker-registry dockerhub \
   --docker-server=https://index.docker.io/v1/ \
   --docker-username=$DOCKERHUB_USER --docker-password='<docker hub access token>'
 ```
@@ -156,11 +156,10 @@ Edit `cluster-issuer.yaml`, put your real email on the `email:` line, then:
 kubectl apply -f cluster-issuer.yaml
 ```
 
-## 6. Edit the manifests (two small edits)
+## 6. Edit the manifests
 
 ```bash
-HOST=$DNS_LABEL.$LOCATION.cloudapp.azure.com
-sed -i '' "s/YOUR-DNS-LABEL.REGION.cloudapp.azure.com/$HOST/g" ingress.yaml      # macOS sed; on Linux drop the ''
+# ingress.yaml already uses aiasg-voice-insights.southeastasia.cloudapp.azure.com (DNS_LABEL + LOCATION from step 1); change it there if you change either.
 # kustomization.yaml already points at tpkprav/voice-insights-api and -ui, tag 1.0.0; change newTag only when you push a new version.
 ```
 
@@ -178,7 +177,7 @@ kubectl apply -f namespace.yaml
 Never put these in a file you commit. Use a strong database password (it is only reachable from inside the cluster).
 
 ```bash
-kubectl -n voice-insights create secret generic voice-insights-secrets \
+kubectl -n nsp-sgpoc-voice-insights create secret generic voice-insights-secrets \
   --from-literal=POSTGRES_PASSWORD='<choose a password>' \
   --from-literal=AZURE_OPENAI_API_KEY='<your Azure OpenAI key, from voice-insights-azureapi/.env>'
 ```
@@ -187,16 +186,16 @@ kubectl -n voice-insights create secret generic voice-insights-secrets \
 
 ```bash
 kubectl apply -k .
-kubectl -n voice-insights get pods -w
+kubectl -n nsp-sgpoc-voice-insights get pods -w
 ```
 
 You should end up with `postgres-0`, `redis-…`, `voice-insights-api-…` and `voice-insights-ui-…` all `Running` and `1/1` Ready.
 The API pod waits for Postgres and Redis, then needs up to about a minute to start. Useful checks:
 
 ```bash
-kubectl -n voice-insights logs deploy/voice-insights-api --tail=50
-kubectl -n voice-insights get ingress
-kubectl -n voice-insights get certificate        # READY True once Let's Encrypt has issued it (1-3 minutes)
+kubectl -n nsp-sgpoc-voice-insights logs deploy/voice-insights-api --tail=50
+kubectl -n nsp-sgpoc-voice-insights get ingress
+kubectl -n nsp-sgpoc-voice-insights get certificate        # READY True once Let's Encrypt has issued it (1-3 minutes)
 ```
 
 ## 10. Load the product documents (so suggestions have something to search)
@@ -208,7 +207,7 @@ A new database is empty. Simplest: open the site, sign up, go to **Admin > Knowl
 # on your Mac (local Docker Postgres):
 docker exec voice_insights_postgres pg_dump -U admin -d ingestor --data-only -t voice_insights.product_chunks > /tmp/product_chunks.sql
 # after the API has started once (it creates the table on first boot):
-kubectl -n voice-insights exec -i postgres-0 -- psql -U admin -d ingestor < /tmp/product_chunks.sql
+kubectl -n nsp-sgpoc-voice-insights exec -i postgres-0 -- psql -U admin -d ingestor < /tmp/product_chunks.sql
 ```
 
 ## 11. Open it
@@ -222,16 +221,16 @@ microphone permission; that only works because the site is on HTTPS.
 
 ```bash
 # Logs
-kubectl -n voice-insights logs deploy/voice-insights-api -f
+kubectl -n nsp-sgpoc-voice-insights logs deploy/voice-insights-api -f
 # A new version: push a new tag, then
 kustomize edit set image voice-insights-api=$DOCKERHUB_USER/voice-insights-api:1.0.1     # or edit kustomization.yaml
 kubectl apply -k .
 # Restart something
-kubectl -n voice-insights rollout restart deploy/voice-insights-api
+kubectl -n nsp-sgpoc-voice-insights rollout restart deploy/voice-insights-api
 # Look inside the database
-kubectl -n voice-insights exec -it postgres-0 -- psql -U admin -d ingestor
+kubectl -n nsp-sgpoc-voice-insights exec -it postgres-0 -- psql -U admin -d ingestor
 # Back it up
-kubectl -n voice-insights exec postgres-0 -- pg_dump -U admin -d ingestor -n voice_insights > backup.sql
+kubectl -n nsp-sgpoc-voice-insights exec postgres-0 -- pg_dump -U admin -d ingestor -n voice_insights > backup.sql
 # Pause the cluster to save money (nodes stop billing; the disk and data are kept)
 az aks stop --resource-group $RG --name $AKS        # later: az aks start ...
 # Remove everything
@@ -261,12 +260,12 @@ Things to know
 
 | You see | Likely cause and fix |
 |---|---|
-| `ImagePullBackOff` | Wrong Docker Hub user/tag in `kustomization.yaml`, or the repo is private (do step 3b). `kubectl -n voice-insights describe pod <pod>` shows the message. |
-| API pod `CrashLoopBackOff`, log says it cannot connect to the database | The Secret's `POSTGRES_PASSWORD` differs from what Postgres first started with. Delete the disk and start clean: `kubectl -n voice-insights delete sts postgres && kubectl -n voice-insights delete pvc data-postgres-0`, then `kubectl apply -k .` |
-| API log: `AZURE_OPENAI_API_KEY` / 401 from Azure | Wrong key in the Secret. Fix it with `kubectl -n voice-insights create secret generic voice-insights-secrets ... --dry-run=client -o yaml | kubectl apply -f -`, then restart the API. |
-| Site opens but the browser says "Not secure" | The certificate is not ready yet: `kubectl -n voice-insights describe certificate voice-insights-tls`. The DNS name must resolve to the ingress IP first (step 4). |
+| `ImagePullBackOff` | Wrong Docker Hub user/tag in `kustomization.yaml`, or the repo is private (do step 3b). `kubectl -n nsp-sgpoc-voice-insights describe pod <pod>` shows the message. |
+| API pod `CrashLoopBackOff`, log says it cannot connect to the database | The Secret's `POSTGRES_PASSWORD` differs from what Postgres first started with. Delete the disk and start clean: `kubectl -n nsp-sgpoc-voice-insights delete sts postgres && kubectl -n nsp-sgpoc-voice-insights delete pvc data-postgres-0`, then `kubectl apply -k .` |
+| API log: `AZURE_OPENAI_API_KEY` / 401 from Azure | Wrong key in the Secret. Fix it with `kubectl -n nsp-sgpoc-voice-insights create secret generic voice-insights-secrets ... --dry-run=client -o yaml | kubectl apply -f -`, then restart the API. |
+| Site opens but the browser says "Not secure" | The certificate is not ready yet: `kubectl -n nsp-sgpoc-voice-insights describe certificate voice-insights-tls`. The DNS name must resolve to the ingress IP first (step 4). |
 | Microphone does nothing | The page is on `http://`, not `https://`. Use the https address. |
 | Every call fails with 403 "Invalid CORS request" | The API is not trusting the ingress's forwarded headers. `SERVER_FORWARD_HEADERS_STRATEGY: framework` must be in `configmap.yaml`; after fixing run `kubectl apply -k .` and restart the API. |
-| "502 Bad Gateway" | The API pod is still starting (wait a minute) or not Ready: `kubectl -n voice-insights get pods`. |
-| Voice stops after a while / analysis stream cuts out | Check the ingress kept its timeout annotations (`kubectl -n voice-insights get ingress voice-insights -o yaml`). |
+| "502 Bad Gateway" | The API pod is still starting (wait a minute) or not Ready: `kubectl -n nsp-sgpoc-voice-insights get pods`. |
+| Voice stops after a while / analysis stream cuts out | Check the ingress kept its timeout annotations (`kubectl -n nsp-sgpoc-voice-insights get ingress voice-insights -o yaml`). |
 | `kubectl` talks to the wrong cluster | `kubectl config get-contexts`, then `az aks get-credentials ... --overwrite-existing` (step 2). |

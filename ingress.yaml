@@ -1,13 +1,14 @@
 # One public address for everything: /api and /ws go to the API, everything else to the UI. HTTPS is required (the browser only allows the
 # microphone on https), and comes from cert-manager + Let's Encrypt.
-# Replace YOUR-DNS-LABEL.REGION.cloudapp.azure.com in BOTH places below (README step 6).
+# Host = <DNS_LABEL>.<LOCATION>.cloudapp.azure.com (README step 6); the DNS label is set on the ingress-nginx Service in step 5.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: voice-insights
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
-    nginx.ingress.kubernetes.io/proxy-body-size: "100m"        # zip uploads in Admin -> Knowledge base
+    nginx.ingress.kubernetes.io/proxy-body-size: "750m"        # zip uploads in Admin -> Knowledge base (up to 700 MB)
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"  # stream big uploads straight to the API instead of spooling them in the ingress
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"     # long-lived voice WebSockets and the live analysis stream
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-buffering: "off"         # lets the server-sent analysis events through as they happen
@@ -18,10 +19,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - YOUR-DNS-LABEL.REGION.cloudapp.azure.com
+        - aiasg-voice-insights.southeastasia.cloudapp.azure.com
       secretName: voice-insights-tls
   rules:
-    - host: YOUR-DNS-LABEL.REGION.cloudapp.azure.com
+    - host: aiasg-voice-insights.southeastasia.cloudapp.azure.com
       http:
         paths:
           - path: /api
