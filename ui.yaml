@@ -27,7 +27,7 @@ spec:
       containers:
         - name: ui
           image: voice-insights-ui             # rewritten by kustomization.yaml (images:)
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always              # the tag is reused (1.0.0), so pull on every pod start or a node keeps serving its cached old image
           ports:
             - { name: http, containerPort: 80 }
           readinessProbe:
